@@ -1,0 +1,8 @@
+{
+  "name": "Prep PM",
+  "description": "Professional PM interview preparation platform with mock interviews, live feedback, and curated question bank.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}

@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "Profile": {
+      "title": "User Profile",
+      "description": "Extended user profile data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "currentRole": { "type": "string" },
+        "targetCompanies": { "type": "array", "items": { "type": "string" } },
+        "targetLevel": { "type": "string" },
+        "interviewDate": { "type": "string", "format": "date" },
+        "streakCount": { "type": "integer" },
+        "lastActiveDate": { "type": "string", "format": "date" },
+        "subscriptionTier": { "type": "string", "enum": ["free", "pro"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "fullName", "createdAt"]
+    },
+    "Session": {
+      "title": "Mock Session",
+      "description": "Data for a completed mock interview session",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "company": { "type": "string" },
+        "questionType": { "type": "string" },
+        "mode": { "type": "string", "enum": ["voice", "text"] },
+        "questionCount": { "type": "integer" },
+        "overallScore": { "type": "integer" },
+        "scores": { "type": "object" },
+        "transcript": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "SkillScore": {
+      "title": "Skill Score",
+      "description": "Rolling average of skills per user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "category": { "type": "string" },
+        "score": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Question": {
+      "title": "Question",
+      "description": "PM Interview Question",
+      "type": "object",
+      "properties": {
+        "company": { "type": "string" },
+        "category": { "type": "string" },
+        "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] },
+        "questionText": { "type": "string" },
+        "frameworkHint": { "type": "string" },
+        "rubricItems": { "type": "array", "items": { "type": "string" } },
+        "goldAnswer": { "type": "string" },
+        "source": { "type": "string" },
+        "upvotes": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "QuestionAttempt": {
+      "title": "Question Attempt",
+      "description": "Individual question attempt within a session",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "questionId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "score": { "type": "integer" },
+        "transcript": { "type": "string" },
+        "feedback": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "profiles/{userId}": {
+      "schema": "Profile",
+      "description": "User profiles"
+    },
+    "sessions/{sessionId}": {
+      "schema": "Session",
+      "description": "Interview sessions"
+    },
+    "skill_scores/{scoreId}": {
+      "schema": "SkillScore",
+      "description": "User skill scores"
+    },
+    "questions/{questionId}": {
+      "schema": "Question",
+      "description": "Question bank"
+    },
+    "question_attempts/{attemptId}": {
+      "schema": "QuestionAttempt",
+      "description": "Attempts at specific questions"
+    }
+  }
+}
