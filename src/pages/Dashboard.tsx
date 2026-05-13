@@ -22,18 +22,12 @@ import {
   Cell
 } from 'recharts';
 import { Link } from 'react-router-dom';
-import { collection, getDocs, addDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useState, useEffect } from 'react';
+import { Session } from '../types';
 
-const SKILLS = [
-  { name: 'Product Sense', score: 85, color: 'bg-green-custom' },
-  { name: 'Behavioral', score: 72, color: 'bg-green-custom' },
-  { name: 'Execution', score: 45, color: 'bg-amber-custom' },
-  { name: 'Metrics', score: 62, color: 'bg-amber-custom' },
-  { name: 'Strategy', score: 38, color: 'bg-red-custom' },
-  { name: 'Estimation', score: 90, color: 'bg-green-custom' },
-];
+const CATEGORIES = ['Product Sense', 'Estimation', 'Behavioral', 'Metrics', 'Strategy', 'Execution'];
 
 const PREP_TASKS = [
   { id: 1, text: 'Review "Facebook Marketplace" design case' },
@@ -42,20 +36,61 @@ const PREP_TASKS = [
   { id: 4, text: 'Complete behavioral mock (2 questions)' },
 ];
 
-const RECENT_SESSIONS = [
-  { id: '1', date: 'Oct 24', company: 'Google', type: 'Product Sense', score: 82, feedback: 'Strong empathy, work on structure.' },
-  { id: '2', date: 'Oct 22', company: 'Meta', type: 'Execution', score: 68, feedback: 'Better prioritization needed.' },
-  { id: '3', date: 'Oct 20', company: 'Stripe', type: 'Behavioral', score: 91, feedback: 'Excellent storytelling.' },
-];
-
-const SAMPLE_QUESTIONS = [
-  { company: 'Meta', category: 'Product Sense', difficulty: 'hard', questionText: 'How would you improve Facebook Marketplace for sellers in emerging markets?', frameworkHint: 'CIRCLES Method', rubricItems: ['Clarify scope', 'Identify user segments', 'Prioritize needs', 'Brainstorm solutions', 'Evaluate trade-offs'], goldAnswer: 'Start by defining emerging markets...' },
-  { company: 'Google', category: 'Estimation', difficulty: 'medium', questionText: 'How many Google Maps users are there in India?', frameworkHint: 'Top-down approach', rubricItems: ['Smartphone penetration', 'Data usage patterns', 'Urban vs Rural divide'], goldAnswer: 'Population 1.4B...' },
-  { company: 'Stripe', category: 'Behavioral', difficulty: 'medium', questionText: 'Tell me about a time you had to make a difficult trade-off under time pressure.', frameworkHint: 'STAR Method', rubricItems: ['Context', 'Options considered', 'Criteria for decision', 'Outcome'], goldAnswer: 'At my previous role...' }
-];
-
 export default function Dashboard() {
   const { profile } = useAuth();
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchSessions() {
+      if (!profile?.id) return;
+      try {
+        const q = query(
+          collection(db, 'sessions'),
+          where('userId', '==', profile.id),
+          orderBy('createdAt', 'desc')
+        );
+        const qSnap = await getDocs(q);
+        const data = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Session));
+        setSessions(data);
+      } catch (err) {
+        console.error("Error fetching sessions:", err);
+        // Fallback if index is not created yet
+        try {
+          const qSnap = await getDocs(collection(db, 'sessions'));
+          const data = qSnap.docs
+            .map(doc => ({ id: doc.id, ...doc.data() } as Session))
+            .filter(s => s.userId === profile.id)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setSessions(data);
+        } catch (e) {
+          console.error(e);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchSessions();
+  }, [profile?.id]);
+
+  const readinessScore = sessions.length > 0 
+    ? Math.round(sessions.reduce((acc, s) => acc + s.overallScore, 0) / sessions.length)
+    : 0;
+
+  const avgFeedback = readinessScore >= 80 ? 'Strong' : readinessScore >= 60 ? 'Growing' : readinessScore > 0 ? 'Learning' : 'None';
+
+  // Skill Heatmap data
+  const skillData = CATEGORIES.map(cat => {
+    const catSessions = sessions.filter(s => s.questionType === cat);
+    const avg = catSessions.length > 0
+      ? Math.round(catSessions.reduce((acc, s) => acc + s.overallScore, 0) / catSessions.length)
+      : 0;
+    return {
+      name: cat,
+      score: avg,
+      color: avg >= 75 ? 'bg-green-custom' : avg >= 50 ? 'bg-amber-custom' : 'bg-red-custom'
+    };
+  }).filter(s => s.score > 0).slice(0, 3); // Top 3 active ones
 
   const daysToInterview = profile?.interviewDate 
     ? Math.max(0, Math.ceil((new Date(profile.interviewDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
@@ -91,24 +126,24 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard 
             label="Readiness Score" 
-            value="74%" 
-            change="+4%"
-            isPositive={true}
+            value={loading ? "..." : `${readinessScore}%`}
+            change={sessions.length > 1 ? (sessions[0].overallScore >= sessions[1].overallScore ? "+2%" : "-2%") : undefined}
+            isPositive={sessions.length > 1 ? sessions[0].overallScore >= sessions[1].overallScore : null}
           />
           <StatCard 
             label="Mocks Completed" 
-            value="12" 
+            value={loading ? "..." : sessions.length.toString()} 
             sub="/ 30 planned" 
           />
           <StatCard 
             label="Current Streak" 
-            value={`${profile?.streakCount || 5}`} 
+            value={`${profile?.streakCount || 0}`} 
             sub="days" 
           />
           <StatCard 
             label="Avg. Feedback" 
-            value="Strong" 
-            change="Steady"
+            value={loading ? "..." : avgFeedback} 
+            change={readinessScore > 0 ? "Steady" : undefined}
             isPositive={null}
           />
         </div>
@@ -133,30 +168,42 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-custom">
-                    {RECENT_SESSIONS.map((session) => (
-                      <tr key={session.id} className="hover:bg-bg/40 transition-colors">
-                        <td className="px-5 py-4 text-[13px] whitespace-nowrap text-text-custom">{session.date}</td>
-                        <td className="px-5 py-4 text-[13px] whitespace-nowrap font-medium text-text-custom">{session.type}</td>
-                        <td className="px-5 py-4 text-[13px] whitespace-nowrap">
-                          <span className="professional-badge bg-primary-light text-primary">
-                            {session.company}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4 text-[13px] whitespace-nowrap">
-                          <span className={cn(
-                            "font-bold",
-                            session.score >= 80 ? "text-green-custom" : session.score >= 60 ? "text-amber-custom" : "text-red-custom"
-                          )}>
-                            {session.score}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4 text-[13px] whitespace-nowrap">
-                          <button className="text-primary text-xs font-semibold hover:underline">
-                            Replay
-                          </button>
-                        </td>
+                    {loading ? (
+                      <tr>
+                        <td colSpan={5} className="px-5 py-8 text-center text-text-sub font-medium">Loading your sessions...</td>
                       </tr>
-                    ))}
+                    ) : sessions.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-5 py-8 text-center text-text-sub font-medium">No sessions found. Start your first mock interview!</td>
+                      </tr>
+                    ) : (
+                      sessions.slice(0, 5).map((session) => (
+                        <tr key={session.id} className="hover:bg-bg/40 transition-colors">
+                          <td className="px-5 py-4 text-[13px] whitespace-nowrap text-text-custom">
+                            {new Date(session.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </td>
+                          <td className="px-5 py-4 text-[13px] whitespace-nowrap font-medium text-text-custom">{session.questionType}</td>
+                          <td className="px-5 py-4 text-[13px] whitespace-nowrap">
+                            <span className="professional-badge bg-primary-light text-primary">
+                              {session.company}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 text-[13px] whitespace-nowrap">
+                            <span className={cn(
+                              "font-bold",
+                              session.overallScore >= 80 ? "text-green-custom" : session.overallScore >= 60 ? "text-amber-custom" : "text-red-custom"
+                            )}>
+                              {session.overallScore}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 text-[13px] whitespace-nowrap">
+                            <Link to={`/results/${session.id}`} className="text-primary text-xs font-semibold hover:underline">
+                              Review
+                            </Link>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -165,24 +212,24 @@ export default function Dashboard() {
               <div className="p-4 px-5 border-t border-border-custom">
                 <h3 className="text-[15px] font-bold text-text-custom mb-4">Skill Heatmap</h3>
                 <div className="space-y-4 py-2">
-                  {[
-                    { name: 'Product Sense', score: 84, color: 'bg-green-custom' },
-                    { name: 'Estimation', score: 62, color: 'bg-amber-custom' },
-                    { name: 'Execution & Metrics', score: 76, color: 'bg-green-custom' },
-                  ].map(skill => (
-                    <div key={skill.name} className="space-y-2">
-                      <div className="flex justify-between text-[13px] font-medium text-text-custom">
-                        <span>{skill.name}</span>
-                        <span>{skill.score}%</span>
+                  {skillData.length === 0 ? (
+                    <p className="text-xs text-text-sub text-center py-4">Collect data from different question types to see your heatmap.</p>
+                  ) : (
+                    skillData.map(skill => (
+                      <div key={skill.name} className="space-y-2">
+                        <div className="flex justify-between text-[13px] font-medium text-text-custom">
+                          <span>{skill.name}</span>
+                          <span>{skill.score}%</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-[#EEE] rounded-full overflow-hidden">
+                          <div 
+                            className={cn("h-full rounded-full transition-all duration-1000", skill.color)}
+                            style={{ width: `${skill.score}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="h-1.5 w-full bg-[#EEE] rounded-full overflow-hidden">
-                        <div 
-                          className={cn("h-full rounded-full transition-all duration-1000", skill.color)}
-                          style={{ width: `${skill.score}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
             </div>

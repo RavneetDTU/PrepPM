@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { Shell } from '../components/ui/Layout';
 import { 
   Search, 
@@ -9,7 +9,9 @@ import {
   Layout, 
   Trophy,
   Play,
-  CheckCircle2
+  CheckCircle2,
+  Database,
+  FileText
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
@@ -19,8 +21,9 @@ import { Question } from '../types';
 import { Plus, X, Loader2, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const CATEGORIES = ['Product Sense', 'Estimation', 'Behavioral', 'Metrics', 'Strategy', 'Execution'];
+const CATEGORIES = ['All', 'Product Sense', 'Estimation', 'Behavioral', 'Metrics', 'Strategy', 'Execution', 'Technical'];
 const COMPANIES = ['Google', 'Meta', 'Stripe', 'Amazon', 'Microsoft', 'Netflix', 'Uber', 'Airbnb'];
+const TAGS = ['Product Sense', 'Strategy', 'Estimation', 'Technical', 'Behavioral', 'Execution', 'Metrics', 'Analytical', 'Design', 'GTM'];
 
 export default function Questions() {
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -35,52 +38,75 @@ export default function Questions() {
   const [newQuestion, setNewQuestion] = useState<Partial<Question>>({
     company: 'Google',
     category: 'Product Sense',
-    difficulty: 'Medium' as any,
+    difficulty: 'Medium',
     questionText: '',
     frameworkHint: '',
     goldAnswer: '',
-    rubricItems: [''],
+    solutionDocUrl: '',
+    tags: [],
     upvotes: 0
   });
 
   const fetchQuestions = async () => {
     setLoading(true);
-    const q = query(collection(db, 'questions'), orderBy('createdAt', 'desc'));
-    const qSnap = await getDocs(q);
-    const data = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Question));
-    setQuestions(data);
-    if (data.length > 0 && !selectedId) setSelectedId(data[0].id);
-    setLoading(false);
+    try {
+      const q = query(collection(db, 'questions'), orderBy('createdAt', 'desc'));
+      const qSnap = await getDocs(q);
+      const data = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Question));
+      setQuestions(data);
+      if (data.length > 0 && !selectedId) setSelectedId(data[0].id);
+    } catch (error) {
+      console.error("Error fetching questions:", error);
+      // Fallback: simple collection fetch
+      const qSnap = await getDocs(collection(db, 'questions'));
+      const data = qSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Question));
+      setQuestions(data);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     fetchQuestions();
   }, []);
 
-  const handleAddQuestion = async (e: React.FormEvent) => {
+  const handleAddQuestion = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     try {
       await addDoc(collection(db, 'questions'), {
         ...newQuestion,
+        rubricItems: [],
         createdAt: serverTimestamp(),
       });
+      alert('Question added successfully!');
       setShowAddModal(false);
       setNewQuestion({
         company: 'Google',
         category: 'Product Sense',
-        difficulty: 'Medium' as any,
+        difficulty: 'Medium',
         questionText: '',
         frameworkHint: '',
         goldAnswer: '',
-        rubricItems: [''],
+        solutionDocUrl: '',
+        tags: [],
         upvotes: 0
       });
       fetchQuestions();
     } catch (error) {
       console.error(error);
+      alert('Failed to add question. Please check if you are signed in and all fields are valid.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const toggleTag = (tag: string) => {
+    const currentTags = newQuestion.tags || [];
+    if (currentTags.includes(tag)) {
+      setNewQuestion({ ...newQuestion, tags: currentTags.filter(t => t !== tag) });
+    } else {
+      setNewQuestion({ ...newQuestion, tags: [...currentTags, tag] });
     }
   };
 
@@ -90,21 +116,23 @@ export default function Questions() {
       {
         company: 'Google',
         category: 'Estimation',
-        difficulty: 'Medium' as any,
+        difficulty: 'Medium',
         questionText: 'How many people are in the air over the US at any given time?',
         frameworkHint: 'Clarify, Divide-and-Conquer, Sanity Check',
         goldAnswer: 'Start by estimating US population. Assume % of people traveling by air. Calculate average flight duration vs total hours in a day. Account for peak vs off-peak times.',
         rubricItems: ['Clarified assumptions', 'Structured estimation steps', 'Reasonable math operations', 'Confidence Check'],
+        tags: ['Estimation', 'Analytical'],
         upvotes: 12
       },
       {
         company: 'Meta',
         category: 'Product Sense',
-        difficulty: 'Hard' as any,
+        difficulty: 'Hard',
         questionText: 'Design a travel product for Facebook.',
         frameworkHint: 'CIRCLE Framework',
         goldAnswer: 'Identify goals (Engagement/Retention). Personas: Group travelers vs solo adventurers. Pain points: Planning friction, trust, real-time coordination. Solution: Shared itineraries with social social proof.',
         rubricItems: ['Defined mission & goals', 'Prioritized user needs', 'Innovative solutioning', 'Defined success metrics'],
+        tags: ['Product Sense', 'Design', 'Strategy'],
         upvotes: 24
       }
     ];
@@ -215,6 +243,9 @@ export default function Questions() {
                           "professional-badge",
                           q.difficulty === 'Hard' ? "bg-red-light text-red-custom" : "bg-amber-light text-amber-custom"
                         )}>{q.difficulty}</span>
+                        {q.tags?.slice(0, 2).map(tag => (
+                          <span key={tag} className="professional-badge bg-secondary-light text-secondary">#{tag}</span>
+                        ))}
                       </div>
                       <h3 className="font-bold text-text-custom text-[15px] leading-tight transition-colors group-hover:text-primary">{q.questionText}</h3>
                     </div>
@@ -268,13 +299,37 @@ export default function Questions() {
                   <h3 className="text-lg font-bold text-text-custom leading-tight">
                     {selectedQuestion.questionText}
                   </h3>
-                  <div className="flex gap-2">
-                    <span className="professional-badge bg-primary text-white">{selectedQuestion.company}</span>
-                    <span className="professional-badge bg-bg text-text-sub border border-border-custom">{selectedQuestion.category}</span>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    <div className="flex flex-wrap gap-2">
+                        <span className="professional-badge bg-primary text-white">{selectedQuestion.company}</span>
+                        <span className="professional-badge bg-bg text-text-sub border border-border-custom">{selectedQuestion.category}</span>
+                        {selectedQuestion.tags?.map(tag => (
+                          <span key={tag} className="professional-badge bg-secondary-light text-secondary border border-secondary/20">#{tag}</span>
+                        ))}
+                      </div>
+                    </div>
+    
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                      {selectedQuestion.solutionDocUrl && (
+                        <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl flex items-center justify-between group">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-primary shadow-sm">
+                              <FileText size={20} />
+                            </div>
+                            <div>
+                              <h4 className="text-[13px] font-bold text-text-custom">Detailed Solution Doc</h4>
+                              <p className="text-[11px] text-text-sub font-medium">Full walkthrough & case study</p>
+                            </div>
+                          </div>
+                          <a 
+                            href={selectedQuestion.solutionDocUrl} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="p-2 hover:bg-white rounded-lg transition-all text-primary"
+                          >
+                            <ChevronRight size={20} />
+                          </a>
+                        </div>
+                      )}
                   <div className="space-y-2.5">
                     <div className="flex items-center gap-2 text-primary">
                       <Layout size={16} />
@@ -397,6 +452,40 @@ export default function Questions() {
                     value={newQuestion.frameworkHint}
                     onChange={e => setNewQuestion({ ...newQuestion, frameworkHint: e.target.value })}
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-text-sub uppercase tracking-wider">Solution Doc URL / File Link</label>
+                  <div className="relative">
+                    <FileText size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-sub" />
+                    <input
+                      placeholder="Link to detailed solution (Drive, Dropbox, etc.)"
+                      className="w-full pl-10 pr-4 py-2.5 bg-bg border border-border-custom rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-primary/10"
+                      value={newQuestion.solutionDocUrl}
+                      onChange={e => setNewQuestion({ ...newQuestion, solutionDocUrl: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-text-sub uppercase tracking-wider">Tags</label>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {TAGS.map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => toggleTag(tag)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-xs font-bold border transition-all",
+                          newQuestion.tags?.includes(tag)
+                            ? "bg-primary border-primary text-white"
+                            : "bg-bg border-border-custom text-text-sub hover:border-primary/40"
+                        )}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">

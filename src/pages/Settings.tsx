@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import { Shell } from '../components/ui/Layout';
 import { 
   Lock, 
@@ -9,19 +9,85 @@ import {
   Trash2, 
   ShieldCheck,
   CreditCard,
-  Bell
+  Bell,
+  Plus,
+  FileText,
+  Tag,
+  Loader2
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { motion } from 'framer-motion';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { Question } from '../types';
+
+const CATEGORIES = ['Product Sense', 'Estimation', 'Behavioral', 'Metrics', 'Strategy', 'Execution', 'Technical'];
+const COMPANIES = ['Google', 'Meta', 'Stripe', 'Amazon', 'Microsoft', 'Netflix', 'Uber', 'Airbnb'];
+const TAGS = ['Product Sense', 'Strategy', 'Estimation', 'Technical', 'Behavioral', 'Execution', 'Metrics', 'Analytical', 'Design', 'GTM'];
 
 export default function Settings() {
   const [apiKey, setApiKey] = useState(localStorage.getItem('openai_api_key') || '');
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // Question Form State
+  const [submitting, setSubmitting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [newQuestion, setNewQuestion] = useState<Partial<Question>>({
+    company: 'Google',
+    category: 'Product Sense',
+    difficulty: 'Medium',
+    questionText: '',
+    frameworkHint: '',
+    goldAnswer: '',
+    solutionDocUrl: '',
+    tags: [],
+    upvotes: 0
+  });
+
   const handleSaveKey = () => {
     localStorage.setItem('openai_api_key', apiKey);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleAddQuestion = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await addDoc(collection(db, 'questions'), {
+        ...newQuestion,
+        rubricItems: [],
+        createdAt: serverTimestamp(),
+      });
+      setShowSuccess(true);
+      setNewQuestion({
+        company: 'Google',
+        category: 'Product Sense',
+        difficulty: 'Medium',
+        questionText: '',
+        frameworkHint: '',
+        goldAnswer: '',
+        solutionDocUrl: '',
+        tags: [],
+        upvotes: 0
+      });
+      setTimeout(() => setShowSuccess(false), 3000);
+    } catch (error: any) {
+      console.error(error);
+      alert(`Failed to add question: ${error.message || 'Unknown error'}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const toggleTag = (tag: string) => {
+    const currentTags = newQuestion.tags || [];
+    if (currentTags.includes(tag)) {
+      setNewQuestion({ ...newQuestion, tags: currentTags.filter(t => t !== tag) });
+    } else {
+      setNewQuestion({ ...newQuestion, tags: [...currentTags, tag] });
+    }
   };
 
   return (
@@ -32,13 +98,14 @@ export default function Settings() {
           <p className="text-text-sub font-medium">Manage your AI configurations and account preferences.</p>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-8">
           {/* AI Configuration */}
           <div className="bg-white rounded-3xl border border-border-custom shadow-sm overflow-hidden">
             <div className="p-8 border-b border-border-custom">
               <h3 className="text-lg font-bold text-text-custom mb-2">AI Configuration</h3>
               <p className="text-sm text-text-sub font-medium">Configuration for OpenAI voice and feedback engines.</p>
             </div>
+            {/* ... key config content remains ... */}
             <div className="p-8 space-y-6">
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
@@ -95,6 +162,142 @@ export default function Settings() {
                   ) : 'Save Key'}
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* Question Bank Contribution */}
+          <div className="bg-white rounded-3xl border border-border-custom shadow-sm overflow-hidden">
+            <div className="p-8 border-b border-border-custom">
+              <h3 className="text-lg font-bold text-text-custom mb-2">Question Bank Contribution</h3>
+              <p className="text-sm text-text-sub font-medium">Contribute new PM interview questions and detailed solutions to the library.</p>
+            </div>
+            <div className="p-8">
+              {showSuccess ? (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-8 bg-green-light border border-green-200 rounded-2xl text-center space-y-4"
+                >
+                  <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-green-custom mx-auto shadow-sm">
+                    <CheckCircle2 size={24} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-green-custom">Question Added Successfully!</h4>
+                    <p className="text-sm text-green-custom opacity-80">Thank you for contributing to the Prep PM community.</p>
+                  </div>
+                </motion.div>
+              ) : (
+                <form onSubmit={handleAddQuestion} className="grid md:grid-cols-2 gap-8">
+                  <div className="space-y-5">
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-text-sub uppercase tracking-wider">Question Text</label>
+                      <textarea
+                        required
+                        placeholder="e.g. Design a vacation sharing product for internal Facebook users..."
+                        rows={3}
+                        className="w-full p-3 bg-bg border border-border-custom rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-primary/10 resize-none"
+                        value={newQuestion.questionText}
+                        onChange={e => setNewQuestion({ ...newQuestion, questionText: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold text-text-sub uppercase tracking-wider">Company</label>
+                        <select
+                          className="w-full p-2.5 bg-bg border border-border-custom rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-primary/10"
+                          value={newQuestion.company}
+                          onChange={e => setNewQuestion({ ...newQuestion, company: e.target.value })}
+                        >
+                          {COMPANIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold text-text-sub uppercase tracking-wider">Difficulty</label>
+                        <select
+                          className="w-full p-2.5 bg-bg border border-border-custom rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-primary/10"
+                          value={newQuestion.difficulty}
+                          onChange={e => setNewQuestion({ ...newQuestion, difficulty: e.target.value as any })}
+                        >
+                          <option value="Easy">Easy</option>
+                          <option value="Medium">Medium</option>
+                          <option value="Hard">Hard</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-text-sub uppercase tracking-wider">Suggested Framework / Hint</label>
+                      <input
+                        required
+                        placeholder="e.g. CIRCLES, BUS, STAR"
+                        className="w-full p-2.5 bg-bg border border-border-custom rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-primary/10"
+                        value={newQuestion.frameworkHint}
+                        onChange={e => setNewQuestion({ ...newQuestion, frameworkHint: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-text-sub uppercase tracking-wider">Solution Doc URL / File Link</label>
+                      <div className="relative">
+                        <FileText size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-sub" />
+                        <input
+                          placeholder="Link to detailed solution (Drive, Dropbox, etc.)"
+                          className="w-full pl-10 pr-4 py-2.5 bg-bg border border-border-custom rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-primary/10"
+                          value={newQuestion.solutionDocUrl}
+                          onChange={e => setNewQuestion({ ...newQuestion, solutionDocUrl: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-5">
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-text-sub uppercase tracking-wider">Tags (Select all that apply)</label>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {TAGS.map(tag => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => toggleTag(tag)}
+                            className={cn(
+                              "px-3 py-1.5 rounded-lg text-xs font-bold border transition-all",
+                              newQuestion.tags?.includes(tag)
+                                ? "bg-primary border-primary text-white"
+                                : "bg-bg border-border-custom text-text-sub hover:border-primary/40"
+                            )}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-text-sub uppercase tracking-wider">Gold Answer (Snippet)</label>
+                      <textarea
+                        required
+                        placeholder="Provide a high-level summary of the ideal response..."
+                        rows={4}
+                        className="w-full p-3 bg-bg border border-border-custom rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-primary/10 resize-none"
+                        value={newQuestion.goldAnswer}
+                        onChange={e => setNewQuestion({ ...newQuestion, goldAnswer: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        disabled={submitting}
+                        type="submit"
+                        className="w-full py-3.5 bg-primary text-white font-bold rounded-xl hover:bg-primary/95 transition-all shadow-xl shadow-primary/20 flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                      >
+                        {submitting ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                        Add to Global Question Bank
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
 

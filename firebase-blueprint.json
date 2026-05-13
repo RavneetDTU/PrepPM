@@ -52,11 +52,13 @@
       "properties": {
         "company": { "type": "string" },
         "category": { "type": "string" },
-        "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] },
+        "difficulty": { "type": "string", "enum": ["Easy", "Medium", "Hard"] },
         "questionText": { "type": "string" },
         "frameworkHint": { "type": "string" },
         "rubricItems": { "type": "array", "items": { "type": "string" } },
         "goldAnswer": { "type": "string" },
+        "solutionDocUrl": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
         "source": { "type": "string" },
         "upvotes": { "type": "integer" },
         "createdAt": { "type": "string", "format": "date-time" }

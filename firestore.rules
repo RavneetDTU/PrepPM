@@ -36,9 +36,33 @@ service cloud.firestore {
       allow write: if isSignedIn() && (request.resource.data.userId == request.auth.uid || resource.data.userId == request.auth.uid);
     }
 
+    function isValidQuestion(q) {
+      let requiredFields = ['company', 'category', 'difficulty', 'questionText', 'frameworkHint', 'goldAnswer', 'solutionDocUrl', 'tags', 'upvotes', 'createdAt', 'rubricItems'];
+      return q.keys().hasAll(requiredFields) && q.keys().size() == requiredFields.size() &&
+             q.company is string && q.company.size() <= 100 &&
+             q.category is string && q.category.size() <= 100 &&
+             q.difficulty in ['Easy', 'Medium', 'Hard'] &&
+             q.questionText is string && q.questionText.size() <= 5000 &&
+             q.frameworkHint is string && q.frameworkHint.size() <= 1000 &&
+             q.goldAnswer is string && q.goldAnswer.size() <= 10000 &&
+             q.solutionDocUrl is string && q.solutionDocUrl.size() <= 1000 &&
+             q.tags is list && q.tags.size() <= 20 &&
+             q.rubricItems is list && q.rubricItems.size() <= 20 &&
+             q.upvotes == 0 &&
+             q.createdAt == request.time;
+    }
+
     match /questions/{questionId} {
       allow read: if isSignedIn();
-      // Admin only write could be added here if needed
+      allow create: if isSignedIn() && isValidQuestion(request.resource.data);
+      allow update: if isSignedIn() && (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes']) ||
+        isAdmin()
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
     match /question_attempts/{attemptId} {

@@ -15,13 +15,16 @@ export interface Question {
   id: string;
   company: string;
   category: string;
-  difficulty: 'easy' | 'medium' | 'hard';
+  difficulty: 'Easy' | 'Medium' | 'Hard';
   questionText: string;
   frameworkHint: string;
   rubricItems: string[];
   goldAnswer: string;
-  source: string;
+  solutionDocUrl?: string;
+  tags?: string[];
+  source?: string;
   upvotes: number;
+  createdAt?: any;
 }
 
 export interface Session {
